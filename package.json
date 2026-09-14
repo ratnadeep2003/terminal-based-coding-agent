@@ -1,4 +1,20 @@
 {
+  "name": "terminal-based-coding-agent",
+  "version": "1.0.0",
+  "description": "Autonomous CLI coding agent powered by Gemini",
+  "type": "module",
+  "main": "./dist/index.js",
+  "bin": {
+    "code-agent": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "keywords": ["ai", "coding-agent", "cli", "gemini"],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "@google/genai": "^2.22.0",
     "chalk": "^6.0.0",
