@@ -202,7 +202,3 @@ terminal-based-coding-agent/
   - [ ] Agent skill synthesis
 
 ---
-
-## 📄 License
-
-This project is licensed under the [ISC License](LICENSE).
