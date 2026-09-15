@@ -2,116 +2,148 @@
 
 import { fileURLToPath } from "url";
 import path from "path";
-
 import * as readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
-import { GoogleGenAI, type Content } from "@google/genai";
 import * as dotenv from "dotenv";
+import chalk from "chalk";
+import ora from "ora";
 
 // Find the directory of this script, and load .env from the agent's folder
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, "../.env") });
+dotenv.config(); // fallback to cwd .env
 
-
-import chalk from "chalk";
-import { tools, executeTool } from "./tools.js";
-
-dotenv.config();
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+import { executeTool } from "./tools.js";
+import { createProvider, type LLMProvider } from "./provider.js";
 
 async function startAgentApp() {
   const rl = readline.createInterface({ input, output });
 
-  // Conversation history persists across turns
-  const history: Content[] = [];
+  let provider: LLMProvider;
+  try {
+    provider = createProvider();
+  } catch (err: any) {
+    console.error(chalk.red.bold("\n❌ Initialization Error:"), err.message);
+    console.log(chalk.yellow("Please ensure GEMINI_API_KEY or ANTHROPIC_API_KEY is configured in your .env file.\n"));
+    rl.close();
+    process.exit(1);
+  }
 
   console.clear();
   console.log(chalk.bold.cyan("============================================="));
   console.log(chalk.bold.cyan("         🤖 Terminal Coding Agent            "));
+  console.log(chalk.dim(` Provider:         ${provider.name.toUpperCase()} (${provider.model})`));
   console.log(chalk.dim(` Working directory: ${process.cwd()}`));
   console.log(chalk.dim(" Type 'exit' to quit, or '/clear' to reset."));
   console.log(chalk.bold.cyan("=============================================\n"));
 
+  const systemInstruction = `You are an autonomous CLI coding assistant operating directly in ${process.cwd()}.
+You have access to tools to read files, write files (with automatic directory creation), edit files (exact text replacement), and run bash commands.
+Always think step-by-step before taking action. Verify changes by inspecting files or running commands.`;
+
   while (true) {
-    const userPrompt = await rl.question(chalk.bold.green("\nYou: "));
+    let userPrompt: string;
+    try {
+      userPrompt = await rl.question(chalk.bold.green("\nYou: "));
+    } catch {
+      break;
+    }
 
     if (!userPrompt.trim()) continue;
 
-    if (userPrompt.trim().toLowerCase() === "exit") {
+    const trimmed = userPrompt.trim().toLowerCase();
+    if (trimmed === "exit" || trimmed === "quit") {
       console.log(chalk.yellow("Goodbye!"));
       rl.close();
       process.exit(0);
     }
 
-    if (userPrompt.trim().toLowerCase() === "/clear") {
-      history.length = 0;
+    if (trimmed === "/clear") {
+      provider.resetContext();
       console.clear();
-      console.log(chalk.yellow("🧹 Context reset."));
+      console.log(chalk.yellow("🧹 Context reset. Conversation history cleared."));
       continue;
     }
 
-    // Add user's prompt to history
-    history.push({ role: "user", parts: [{ text: userPrompt }] });
+    // Add user's prompt to provider history
+    provider.addUserMessage(userPrompt);
 
-    // Inner Agent Execution Loop
-    while (true) {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
-        contents: history,
-        config: {
-          systemInstruction: `You are an autonomous CLI coding assistant operating directly in ${process.cwd()}.
-Inspect files, write code, run commands, and verify changes. Always explain what you did clearly.`,
-          tools: [{ functionDeclarations: tools }],
-        },
-      });
+    const spinner = ora({
+      text: chalk.dim("Thinking..."),
+      color: "cyan",
+    });
 
-      const candidate = response.candidates?.[0];
-      if (!candidate || !candidate.content) {
-        console.log(chalk.red("No response received from model."));
+    // Inner ReAct Execution Loop
+    let turnCount = 0;
+    const maxTurns = 25;
+
+    while (turnCount < maxTurns) {
+      turnCount++;
+      spinner.start();
+
+      let stepResult;
+      try {
+        stepResult = await provider.generateStep(systemInstruction);
+      } catch (err: any) {
+        spinner.stop();
+        console.log(chalk.red.bold(`\n❌ Error during execution: ${err.message}`));
+        break;
+      }
+      spinner.stop();
+
+      // Display model's thinking process if present
+      if (stepResult.thinking) {
+        console.log(chalk.bold.magenta("\n💭 Thinking:"));
+        console.log(chalk.dim(stepResult.thinking));
+      }
+
+      // If no tool calls, Gemini/Anthropic has finished the task
+      if (stepResult.toolCalls.length === 0) {
+        if (stepResult.text) {
+          console.log(chalk.bold.blue("\nAgent:\n") + stepResult.text);
+        }
         break;
       }
 
-      // Extract tool calls
-      const functionCalls = (candidate.content.parts || [])
-        .map((p) => p.functionCall)
-        .filter((call): call is NonNullable<typeof call> => Boolean(call && call.name));
-
-      // If no tool call, Gemini has finished the turn
-      if (functionCalls.length === 0) {
-        console.log(chalk.bold.blue("\nAgent:\n") + response.text);
-        // Save final answer to history
-        history.push(candidate.content);
-        break;
+      // If text preceded the tool call, show it
+      if (stepResult.text) {
+        console.log(chalk.bold.blue("\nAgent: ") + stepResult.text);
       }
 
-      // Save intermediate action
-      history.push(candidate.content);
+      // Execute all tool calls
+      const toolResults: Array<{ id?: string; name: string; output: string }> = [];
 
-      // Execute tool calls
-      for (const call of functionCalls) {
-        const callName = call.name ?? "unknown_tool";
-        const callArgs = (call.args as Record<string, any>) ?? {};
+      for (const call of stepResult.toolCalls) {
+        const callName = call.name;
+        const callArgs = call.args || {};
 
         console.log(chalk.yellow(`\n⚙ Tool Call: ${callName}(${JSON.stringify(callArgs)})`));
 
-        const output = await executeTool(callName, callArgs);
-        console.log(chalk.dim(`↳ Output: ${String(output).slice(0, 150)}...`));
+        const toolSpinner = ora({
+          text: chalk.dim(`Executing ${callName}...`),
+          color: "yellow",
+        }).start();
 
-        // Feed tool result back to Gemini
-        history.push({
-          role: "user",
-          parts: [
-            {
-              functionResponse: {
-                name: callName,
-                response: { result: output },
-              },
-            },
-          ],
+        const output = await executeTool(callName, callArgs);
+        toolSpinner.stop();
+
+        const preview = output.length > 300 ? output.slice(0, 300) + "... [truncated]" : output;
+        console.log(chalk.dim(`↳ Output: ${preview}`));
+
+        toolResults.push({
+          id: call.id,
+          name: callName,
+          output,
         });
       }
+
+      // Feed all tool results back into history as a single turn
+      provider.addToolResults(toolResults);
+    }
+
+    if (turnCount >= maxTurns) {
+      console.log(chalk.yellow("\n⚠️ Reached maximum turn limit for this prompt."));
     }
   }
 }

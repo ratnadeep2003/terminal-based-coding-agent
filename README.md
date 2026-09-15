@@ -1,6 +1,6 @@
 # 🤖 Terminal-Based Coding Agent
 
-> A mini, autonomous terminal coding agent inspired by **Claude Code**, written in **TypeScript / JavaScript** and powered by **Google Gemini**.
+> A mini, autonomous terminal coding agent inspired by **Claude Code**, written in **TypeScript / JavaScript** and powered by **Anthropic Claude** and **Google Gemini**.
 
 ---
 
@@ -166,14 +166,32 @@ I have added the `formatDateToISO` helper function to `src/utils.ts`.
 
 ---
 
+## 📁 Project Structure
+
+```text
+terminal-based-coding-agent/
+├── src/
+│   ├── index.ts        # CLI entry point, readline REPL loop, & Ora spinner UX
+│   ├── provider.ts     # Unified LLM provider (Gemini & Anthropic with thinking)
+│   └── tools.ts        # Tool declarations & safe execution handlers
+├── dist/               # Compiled JavaScript bundle
+├── docs/
+│   └── PLAN.md         # Multi-phase roadmap & feature plans
+├── package.json        # Dependencies & executable binary declaration
+├── tsconfig.json       # TypeScript compiler configuration
+└── README.md           # Documentation
+```
+
+---
+
 ## 🗺️ Roadmap
 
 - [x] **v1: Core Autonomous Terminal Agent**
   - [x] ReAct perception & action loop
   - [x] Interactive CLI with history & terminal styling
-  - [ ] Multi-provider support (Gemini + Anthropic)
-  - [ ] Transparent thinking visualization
-  - [ ] Targeted file editing (`edit_file`) & auto-directory creation
+  - [x] Multi-provider support (Gemini + Anthropic)
+  - [x] Transparent thinking visualization
+  - [x] Targeted file editing (`edit_file`) & auto-directory creation
 - [ ] **v2: IDE & Version Control Integrations**
   - [ ] VS Code and external editor synchronization
   - [ ] GitHub automation (clone, branch, commit, push, PR creation)
