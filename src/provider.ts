@@ -27,6 +27,22 @@ export interface LLMProvider {
 // ============================================================================
 // Google Gemini Provider
 // ============================================================================
+async function withRetry<T>(fn: () => Promise<T>, retries = 5): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const msg = String(err?.message ?? "");
+      const retryable =
+        [429, 500, 503, 529].includes(err?.status) ||
+        /"code":\s*(429|500|503)|UNAVAILABLE|overloaded/i.test(msg);
+      if (!retryable || attempt >= retries) throw err;
+      const delay = Math.min(30000, 1000 * 2 ** attempt) + Math.random() * 500;
+      console.log(`\n⏳ Model busy, retrying in ${(delay / 1000).toFixed(1)}s (${attempt + 1}/${retries})...`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
 export class GeminiProvider implements LLMProvider {
   readonly name = "gemini" as const;
   readonly model: string;
@@ -43,15 +59,17 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async generateStep(systemInstruction: string): Promise<StepResult> {
-    const response = await this.ai.models.generateContent({
-      model: this.model,
-      contents: this.history,
-      config: {
-        systemInstruction,
-        thinkingConfig: { includeThoughts: true },
-        tools: [{ functionDeclarations: geminiTools }],
-      },
-    });
+    const response = await withRetry(() =>
+      this.ai.models.generateContent({
+        model: this.model,
+        contents: this.history,
+        config: {
+          systemInstruction,
+          thinkingConfig: { includeThoughts: true },
+          tools: [{ functionDeclarations: geminiTools }],
+        },
+      })
+    );
 
     const candidate = response.candidates?.[0];
     if (!candidate || !candidate.content) {
@@ -123,17 +141,19 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async generateStep(systemInstruction: string): Promise<StepResult> {
-    const response = await this.client.messages.create({
-      model: this.model,
-      system: systemInstruction,
-      max_tokens: 4096,
-      thinking: {
-        type: "enabled",
-        budget_tokens: 1024,
-      },
-      tools: anthropicTools,
-      messages: this.messages,
-    });
+    const response = await withRetry(() =>
+      this.client.messages.create({
+        model: this.model,
+        system: systemInstruction,
+        max_tokens: 4096,
+        thinking: {
+          type: "enabled",
+          budget_tokens: 1024,
+        },
+        tools: anthropicTools,
+        messages: this.messages,
+      })
+    );
 
     // Save assistant message to messages history
     this.messages.push({ role: "assistant", content: response.content });

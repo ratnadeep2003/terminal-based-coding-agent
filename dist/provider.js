@@ -4,6 +4,23 @@ import { tools as geminiTools, anthropicTools } from "./tools.js";
 // ============================================================================
 // Google Gemini Provider
 // ============================================================================
+async function withRetry(fn, retries = 5) {
+    for (let attempt = 0;; attempt++) {
+        try {
+            return await fn();
+        }
+        catch (err) {
+            const msg = String(err?.message ?? "");
+            const retryable = [429, 500, 503, 529].includes(err?.status) ||
+                /"code":\s*(429|500|503)|UNAVAILABLE|overloaded/i.test(msg);
+            if (!retryable || attempt >= retries)
+                throw err;
+            const delay = Math.min(30000, 1000 * 2 ** attempt) + Math.random() * 500;
+            console.log(`\n⏳ Model busy, retrying in ${(delay / 1000).toFixed(1)}s (${attempt + 1}/${retries})...`);
+            await new Promise((r) => setTimeout(r, delay));
+        }
+    }
+}
 export class GeminiProvider {
     name = "gemini";
     model;
@@ -17,7 +34,7 @@ export class GeminiProvider {
         this.history.push({ role: "user", parts: [{ text }] });
     }
     async generateStep(systemInstruction) {
-        const response = await this.ai.models.generateContent({
+        const response = await withRetry(() => this.ai.models.generateContent({
             model: this.model,
             contents: this.history,
             config: {
@@ -25,7 +42,7 @@ export class GeminiProvider {
                 thinkingConfig: { includeThoughts: true },
                 tools: [{ functionDeclarations: geminiTools }],
             },
-        });
+        }));
         const candidate = response.candidates?.[0];
         if (!candidate || !candidate.content) {
             return { toolCalls: [], text: "No response received from Gemini." };
@@ -88,7 +105,7 @@ export class AnthropicProvider {
         this.messages.push({ role: "user", content: text });
     }
     async generateStep(systemInstruction) {
-        const response = await this.client.messages.create({
+        const response = await withRetry(() => this.client.messages.create({
             model: this.model,
             system: systemInstruction,
             max_tokens: 4096,
@@ -98,7 +115,7 @@ export class AnthropicProvider {
             },
             tools: anthropicTools,
             messages: this.messages,
-        });
+        }));
         // Save assistant message to messages history
         this.messages.push({ role: "assistant", content: response.content });
         let thinking = "";
