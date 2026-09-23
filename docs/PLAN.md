@@ -7,7 +7,9 @@ For now there is no need to give this coding agent access to a coding editor, a 
 v1.1:
 Ability to switch between ai models when tokens run out 
 v1.2:
-Custom commands like claude code: /comapct, /btw, /branch, /init, /resume, /name, /export, /cost, /usgae, /status
+Custom commands like claude code: /comapct, /btw, /branch, /init, /resume, /name, /export, /cost, /usgae, /status\
+v1.3:
+Add a theme colour ? not imp 
 
 v2:
 Give this coding agent access to vscode and any other basic coding editor
