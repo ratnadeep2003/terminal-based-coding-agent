@@ -4,7 +4,7 @@
 
 ---
 
-## 📌 Overview
+## Overview
 
 The **Terminal Coding Agent** is an interactive command-line developer assistant that lives directly in your shell. It operates directly on your local workspace to inspect repositories, read code, perform precise edits, create new files, run bash commands (test suites, linters, git), and autonomously verify its work.
 
@@ -18,47 +18,51 @@ Unlike generic chat assistants, it features a complete **ReAct (Reasoning + Acti
 
 ## ✨ Features (v1)
 
-- 🧠 **Dual LLM Provider Support**:
+-  **Dual LLM Provider Support**:
   - **Google Gemini** (powered by `@google/genai` with `gemini-3.6-flash` and thinking mode).
   - **Anthropic Claude** (powered by `@anthropic-ai/sdk` with `claude-3-7-sonnet` / `claude-3-5-sonnet` and extended thinking).
   - Automatically switches based on available API keys or user configuration.
-- 💭 **Transparent Thinking**:
+-  **Transparent Thinking**:
   - Live terminal visualization of the model's internal thoughts and reasoning process before it executes any actions.
-- 🛠️ **Autonomous Tool Calling**:
+-  **Autonomous Tool Calling**:
   - `read_file`: Inspect contents of any file in the workspace.
   - `write_file`: Create new files (automatically creating parent subdirectories).
   - `edit_file`: Precise search-and-replace edits without rewriting or truncating large files.
-  - `run_bash`: Execute shell commands (e.g. `npm test`, `git status`, `python script.py`, `ls`).
-- 💻 **Terminal-First UX**:
+  - `run_bash`: Execute shell commands (e.g. `npm test`, `git status`, `python script.py`, `ls`) — gated behind a `[y/N]` confirmation prompt before execution.
+-  **Terminal-First UX**:
   - Interactive REPL loop with rich color output (Chalk) and live spinners (Ora).
   - Session history persistence across turns with `/clear` context reset and `exit` commands.
-- 📁 **Zero IDE Dependency**:
+-  **Zero IDE Dependency**:
   - Operates standalone on any folder or code repository, outputting clean changes across `.tsx`, `.ts`, `.py`, `.json`, or any other extension.
 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 
 ```mermaid
 flowchart TD
     User([User Prompt in Terminal]) --> REPL[Interactive CLI REPL]
     REPL --> Provider[Unified Provider Adapter\nGemini / Anthropic]
-    Provider --> Thinking[🧠 Live Thinking & Reasoning]
+    Provider --> Thinking[ Live Thinking & Reasoning]
     Thinking --> ToolCheck{Tool Calls Requested?}
-    ToolCheck -- Yes --> ToolExec[⚙ Tool Execution Engine]
-    ToolExec --> T1[📖 read_file]
-    ToolExec --> T2[✍ write_file]
-    ToolExec --> T3[✂ edit_file]
-    ToolExec --> T4[💻 run_bash]
+    ToolCheck -- Yes --> BashCheck{Tool = run_bash?}
+    BashCheck -- Yes --> Confirm[⚠ y/N Confirmation Prompt]
+    Confirm -- Approved --> ToolExec[⚙ Tool Execution Engine]
+    Confirm -- Declined --> History
+    BashCheck -- No --> ToolExec
+    ToolExec --> T1[ read_file]
+    ToolExec --> T2[ write_file]
+    ToolExec --> T3[ edit_file]
+    ToolExec --> T4[ run_bash]
     T1 & T2 & T3 & T4 --> History[(Conversation History)]
     History --> Provider
-    ToolCheck -- No --> Output[💬 Final Agent Response]
+    ToolCheck -- No --> Output[ Final Agent Response]
     Output --> REPL
 ```
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ### 1. Prerequisites
 - **Node.js** >= 18.0.0
@@ -118,7 +122,7 @@ code-agent
 ```
 ---
 
-## 💡 Usage Example
+##  Usage Example
 
 Once inside the interactive terminal session:
 
@@ -156,36 +160,46 @@ I have added the `formatDateToISO` helper function to `src/utils.ts`.
 
 ---
 
-## 🛠️ Built-in Tools (v1)
+##  Built-in Tools (v1)
 
 | Tool | Parameters | Description |
 | :--- | :--- | :--- |
 | `read_file` | `path: string` | Reads and returns the complete utf-8 contents of a file. |
 | `write_file` | `path: string`, `content: string` | Writes or overwrites a file. Automatically creates any missing parent directories. |
 | `edit_file` | `path: string`, `target: string`, `replacement: string` | Replaces an exact block of code with new content. Fails safely if target isn't found. |
-| `run_bash` | `command: string` | Executes a shell command and captures `stdout` and `stderr`. |
+| `run_bash` | `command: string` | Executes a shell command and captures `stdout` and `stderr`. Requires explicit `[y/N]` user confirmation before running. |
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```text
 terminal-based-coding-agent/
 ├── src/
-│   ├── index.ts        # CLI entry point, readline REPL loop, & Ora spinner UX
-│   ├── provider.ts     # Unified LLM provider (Gemini & Anthropic with thinking)
-│   └── tools.ts        # Tool declarations & safe execution handlers
-├── dist/               # Compiled JavaScript bundle
+│   ├── index.ts             # CLI entry point & REPL loop (incl. run_bash confirmation gate)
+│   ├── config.ts            # .env loading
+│   ├── ui.ts                # Chalk/Ora terminal output helpers
+│   ├── providers/
+│   │   ├── types.ts         # LLMProvider, StepResult, ToolCall interfaces
+│   │   ├── retry.ts         # Shared withRetry backoff helper
+│   │   ├── gemini.ts        # Gemini provider implementation
+│   │   ├── anthropic.ts     # Anthropic provider implementation
+│   │   └── index.ts         # createProvider() factory & re-exports
+│   └── tools/
+│       ├── schemas.ts       # Gemini & Anthropic tool declarations
+│       ├── executor.ts      # executeTool() — safe tool execution
+│       └── index.ts         # Barrel export
+├── dist/                    # Compiled JavaScript bundle (mirrors src/ structure)
 ├── docs/
-│   └── PLAN.md         # Multi-phase roadmap & feature plans
-├── package.json        # Dependencies & executable binary declaration
-├── tsconfig.json       # TypeScript compiler configuration
-└── README.md           # Documentation
+│   └── PLAN.md               # Multi-phase roadmap & feature plans
+├── package.json             # Dependencies & executable binary declaration
+├── tsconfig.json            # TypeScript compiler configuration
+└── README.md                # Documentation
 ```
 
 ---
 
-## 🗺️ Roadmap
+##  Roadmap
 
 - [x] **v1: Core Autonomous Terminal Agent**
   - [x] ReAct perception & action loop
