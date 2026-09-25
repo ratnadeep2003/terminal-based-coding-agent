@@ -90,6 +90,19 @@ Always think step-by-step before taking action. Verify changes by inspecting fil
       for (const call of stepResult.toolCalls) {
         ui.printToolCall(call.name, call.args || {});
 
+        if (call.name === "run_bash") {
+          const answer = await rl.question(ui.formatBashConfirmPrompt(call.args?.command ?? ""));
+          if (!/^y(es)?$/i.test(answer.trim())) {
+            ui.printBashDeclined();
+            toolResults.push({
+              id: call.id,
+              name: call.name,
+              output: "Command not executed: user declined confirmation.",
+            });
+            continue;
+          }
+        }
+
         const toolSpinner = ui.makeSpinner(`Executing ${call.name}...`, "yellow").start();
         const output = await executeTool(call.name, call.args || {});
         toolSpinner.stop();

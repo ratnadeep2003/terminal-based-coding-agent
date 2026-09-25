@@ -43,3 +43,11 @@ export function printGoodbye() {
 export function makeSpinner(text, color = "cyan") {
     return ora({ text: chalk.dim(text), color });
 }
+export function formatBashConfirmPrompt(command) {
+    return (chalk.red.bold("\n⚠ Run this command? ") +
+        chalk.white(command) +
+        chalk.dim(" [y/N] "));
+}
+export function printBashDeclined() {
+    console.log(chalk.yellow("↳ Skipped: command not approved."));
+}

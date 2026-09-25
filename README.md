@@ -111,10 +111,11 @@ npm start
 To install the agent globally on your machine so you can run `code-agent` from any directory:
 
 ```bash
+npm run build
+chmod +x dist/index.js
 npm link
 code-agent
 ```
-
 ---
 
 ## 💡 Usage Example
