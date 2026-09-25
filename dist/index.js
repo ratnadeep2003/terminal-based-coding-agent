@@ -1,18 +1,11 @@
 #!/usr/bin/env node
-import { fileURLToPath } from "url";
-import path from "path";
 import * as readline from "readline/promises";
 import { stdin as input, stdout as output } from "process";
-import * as dotenv from "dotenv";
-import chalk from "chalk";
-import ora from "ora";
-// Find the directory of this script, and load .env from the agent's folder
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
-dotenv.config(); // fallback to cwd .env
-import { executeTool } from "./tools.js";
-import { createProvider } from "./provider.js";
+import { loadEnv } from "./config.js";
+import { createProvider } from "./providers/index.js";
+import { executeTool } from "./tools/index.js";
+import * as ui from "./ui.js";
+loadEnv();
 async function startAgentApp() {
     const rl = readline.createInterface({ input, output });
     let provider;
@@ -20,25 +13,18 @@ async function startAgentApp() {
         provider = createProvider();
     }
     catch (err) {
-        console.error(chalk.red.bold("\n❌ Initialization Error:"), err.message);
-        console.log(chalk.yellow("Please ensure GEMINI_API_KEY or ANTHROPIC_API_KEY is configured in your .env file.\n"));
+        ui.printInitError(err.message);
         rl.close();
         process.exit(1);
     }
-    console.clear();
-    console.log(chalk.bold.cyan("============================================="));
-    console.log(chalk.bold.cyan("         🤖 Terminal Coding Agent            "));
-    console.log(chalk.dim(` Provider:         ${provider.name.toUpperCase()} (${provider.model})`));
-    console.log(chalk.dim(` Working directory: ${process.cwd()}`));
-    console.log(chalk.dim(" Type 'exit' to quit, or '/clear' to reset."));
-    console.log(chalk.bold.cyan("=============================================\n"));
+    ui.printBanner(provider.name, provider.model, process.cwd());
     const systemInstruction = `You are an autonomous CLI coding assistant operating directly in ${process.cwd()}.
 You have access to tools to read files, write files (with automatic directory creation), edit files (exact text replacement), and run bash commands.
 Always think step-by-step before taking action. Verify changes by inspecting files or running commands.`;
     while (true) {
         let userPrompt;
         try {
-            userPrompt = await rl.question(chalk.bold.green("\nYou: "));
+            userPrompt = await rl.question("\nYou: ");
         }
         catch {
             break;
@@ -47,23 +33,18 @@ Always think step-by-step before taking action. Verify changes by inspecting fil
             continue;
         const trimmed = userPrompt.trim().toLowerCase();
         if (trimmed === "exit" || trimmed === "quit") {
-            console.log(chalk.yellow("Goodbye!"));
+            ui.printGoodbye();
             rl.close();
             process.exit(0);
         }
         if (trimmed === "/clear") {
             provider.resetContext();
-            console.clear();
-            console.log(chalk.yellow("🧹 Context reset. Conversation history cleared."));
+            ui.printContextCleared();
             continue;
         }
-        // Add user's prompt to provider history
         provider.addUserMessage(userPrompt);
-        const spinner = ora({
-            text: chalk.dim("Thinking..."),
-            color: "cyan",
-        });
-        // Inner ReAct Execution Loop
+        const spinner = ui.makeSpinner("Thinking...");
+        // Inner ReAct execution loop
         let turnCount = 0;
         const maxTurns = 25;
         while (turnCount < maxTurns) {
@@ -75,51 +56,34 @@ Always think step-by-step before taking action. Verify changes by inspecting fil
             }
             catch (err) {
                 spinner.stop();
-                console.log(chalk.red.bold(`\n❌ Error during execution: ${err.message}`));
+                ui.printExecutionError(err.message);
                 break;
             }
             spinner.stop();
-            // Display model's thinking process if present
             if (stepResult.thinking) {
-                console.log(chalk.bold.magenta("\n💭 Thinking:"));
-                console.log(chalk.dim(stepResult.thinking));
+                ui.printThinking(stepResult.thinking);
             }
-            // If no tool calls, Gemini/Anthropic has finished the task
+            // No tool calls means the model has finished the task
             if (stepResult.toolCalls.length === 0) {
-                if (stepResult.text) {
-                    console.log(chalk.bold.blue("\nAgent:\n") + stepResult.text);
-                }
+                if (stepResult.text)
+                    ui.printAgentText(stepResult.text);
                 break;
             }
-            // If text preceded the tool call, show it
-            if (stepResult.text) {
-                console.log(chalk.bold.blue("\nAgent: ") + stepResult.text);
-            }
-            // Execute all tool calls
+            if (stepResult.text)
+                ui.printAgentText(stepResult.text, true);
             const toolResults = [];
             for (const call of stepResult.toolCalls) {
-                const callName = call.name;
-                const callArgs = call.args || {};
-                console.log(chalk.yellow(`\n⚙ Tool Call: ${callName}(${JSON.stringify(callArgs)})`));
-                const toolSpinner = ora({
-                    text: chalk.dim(`Executing ${callName}...`),
-                    color: "yellow",
-                }).start();
-                const output = await executeTool(callName, callArgs);
+                ui.printToolCall(call.name, call.args || {});
+                const toolSpinner = ui.makeSpinner(`Executing ${call.name}...`, "yellow").start();
+                const output = await executeTool(call.name, call.args || {});
                 toolSpinner.stop();
-                const preview = output.length > 300 ? output.slice(0, 300) + "... [truncated]" : output;
-                console.log(chalk.dim(`↳ Output: ${preview}`));
-                toolResults.push({
-                    id: call.id,
-                    name: callName,
-                    output,
-                });
+                ui.printToolOutput(output);
+                toolResults.push({ id: call.id, name: call.name, output });
             }
-            // Feed all tool results back into history as a single turn
             provider.addToolResults(toolResults);
         }
         if (turnCount >= maxTurns) {
-            console.log(chalk.yellow("\n⚠️ Reached maximum turn limit for this prompt."));
+            ui.printMaxTurnsReached();
         }
     }
 }
