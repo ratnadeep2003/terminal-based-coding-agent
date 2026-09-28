@@ -87,14 +87,15 @@ ${await buildTree()}`;
     // Inline any @path/to/file mentions so the model sees them immediately
     provider.addUserMessage(await expandMentions(userPrompt));
 
-    const spinner = ui.makeSpinner("Thinking...");
-
     // Inner ReAct execution loop
     let turnCount = 0;
     const maxTurns = 25;
 
     while (turnCount < maxTurns) {
       turnCount++;
+
+      // 1. Interactive provider thinking spinner
+      const spinner = ui.makeThinkingSpinner(provider.name);
       spinner.start();
 
       let stepResult;
@@ -107,17 +108,24 @@ ${await buildTree()}`;
       }
       spinner.stop();
 
+      // 2. Print internal thought chain with provider styling
       if (stepResult.thinking) {
-        ui.printThinking(stepResult.thinking);
+        ui.printThinking(stepResult.thinking, provider.name);
       }
 
-      // No tool calls means the model has finished the task
+      // 3. Final answer (no tool calls) - animate hype first, then print final answer
       if (stepResult.toolCalls.length === 0) {
-        if (stepResult.text) ui.printAgentText(stepResult.text);
+        if (stepResult.text) {
+          await ui.animateHype(provider.name);
+          ui.printAgentText(stepResult.text, false, provider.name);
+        }
         break;
       }
 
-      if (stepResult.text) ui.printAgentText(stepResult.text, true);
+      // 4. Text emitted before tool calls
+      if (stepResult.text) {
+        ui.printAgentText(stepResult.text, true, provider.name);
+      }
 
       const toolResults: Array<{ id?: string; name: string; output: string }> = [];
 
