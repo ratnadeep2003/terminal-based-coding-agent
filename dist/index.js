@@ -4,6 +4,7 @@ import { stdin as input, stdout as output } from "process";
 import { loadEnv } from "./config.js";
 import { createProvider } from "./providers/index.js";
 import { executeTool } from "./tools/index.js";
+import { getRoot, setRoot, buildTree, expandMentions } from "./workspace.js";
 import * as ui from "./ui.js";
 loadEnv();
 async function startAgentApp() {
@@ -17,10 +18,27 @@ async function startAgentApp() {
         rl.close();
         process.exit(1);
     }
-    ui.printBanner(provider.name, provider.model, process.cwd());
-    const systemInstruction = `You are an autonomous CLI coding assistant operating directly in ${process.cwd()}.
-You have access to tools to read files, write files (with automatic directory creation), edit files (exact text replacement), and run bash commands.
-Always think step-by-step before taking action. Verify changes by inspecting files or running commands.`;
+    // `code-agent ./my-project` opens that folder as the workspace
+    const dirArg = process.argv[2];
+    if (dirArg) {
+        try {
+            setRoot(dirArg);
+        }
+        catch (err) {
+            ui.printInitError(err.message);
+            rl.close();
+            process.exit(1);
+        }
+    }
+    ui.printBanner(provider.name, provider.model, getRoot());
+    const buildSystemInstruction = async () => `You are an autonomous CLI coding assistant. Your workspace root is ${getRoot()}.
+All file paths are relative to it and cannot escape it; bash commands run inside it.
+You have tools to list directories, read files, write files (with automatic directory creation), edit files (exact text replacement), and run bash commands.
+Explore with list_dir/read_file before editing. Always think step-by-step before taking action. Verify changes by inspecting files or running commands.
+
+Project structure (2 levels deep):
+${await buildTree()}`;
+    let systemInstruction = await buildSystemInstruction();
     while (true) {
         let userPrompt;
         try {
@@ -42,7 +60,23 @@ Always think step-by-step before taking action. Verify changes by inspecting fil
             ui.printContextCleared();
             continue;
         }
-        provider.addUserMessage(userPrompt);
+        if (trimmed.startsWith("/open")) {
+            const dir = userPrompt.trim().slice(5).trim();
+            try {
+                if (!dir)
+                    throw new Error("Usage: /open <directory>");
+                setRoot(dir);
+                provider.resetContext();
+                systemInstruction = await buildSystemInstruction();
+                ui.printWorkspaceOpened(getRoot());
+            }
+            catch (err) {
+                ui.printError(err.message);
+            }
+            continue;
+        }
+        // Inline any @path/to/file mentions so the model sees them immediately
+        provider.addUserMessage(await expandMentions(userPrompt));
         const spinner = ui.makeSpinner("Thinking...");
         // Inner ReAct execution loop
         let turnCount = 0;

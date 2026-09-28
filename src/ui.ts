@@ -7,7 +7,7 @@ export function printBanner(providerName: string, model: string, cwd: string): v
   console.log(chalk.bold.cyan("         🤖 Terminal Coding Agent            "));
   console.log(chalk.dim(` Provider:         ${providerName.toUpperCase()} (${model})`));
   console.log(chalk.dim(` Working directory: ${cwd}`));
-  console.log(chalk.dim(" Type 'exit' to quit, or '/clear' to reset."));
+  console.log(chalk.dim(" Type 'exit' to quit, '/clear' to reset, '/open <dir>' to switch project."));
   console.log(chalk.bold.cyan("=============================================\n"));
 }
 
@@ -65,4 +65,12 @@ export function formatBashConfirmPrompt(command: string): string {
 
 export function printBashDeclined(): void {
   console.log(chalk.yellow("↳ Skipped: command not approved."));
+}
+
+export function printWorkspaceOpened(dir: string): void {
+  console.log(chalk.green(`📂 Workspace set to ${dir}`));
+}
+
+export function printError(message: string): void {
+  console.log(chalk.red(`❌ ${message}`));
 }

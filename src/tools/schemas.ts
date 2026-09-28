@@ -42,6 +42,16 @@ export const tools: FunctionDeclaration[] = [
     },
   },
   {
+    name: "list_dir",
+    description: "List files and folders in a directory of the workspace (defaults to the workspace root)",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        path: { type: Type.STRING, description: "Directory path, relative to the workspace root. Defaults to '.'" },
+      },
+    },
+  },
+  {
     name: "run_bash",
     description: "Run bash terminal commands (tests, git, build, ls, etc.)",
     parameters: {
@@ -92,6 +102,16 @@ export const anthropicTools: Anthropic.Tool[] = [
         replacement: { type: "string", description: "The new replacement text or code" },
       },
       required: ["path", "target", "replacement"],
+    },
+  },
+  {
+    name: "list_dir",
+    description: "List files and folders in a directory of the workspace (defaults to the workspace root)",
+    input_schema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Directory path, relative to the workspace root. Defaults to '.'" },
+      },
     },
   },
   {
