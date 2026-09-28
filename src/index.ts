@@ -40,7 +40,7 @@ async function startAgentApp() {
   const buildSystemInstruction = async () => `You are an autonomous CLI coding assistant. Your workspace root is ${getRoot()}.
 All file paths are relative to it and cannot escape it; bash commands run inside it.
 You have tools to list directories, read files, write files (with automatic directory creation), edit files (exact text replacement), and run bash commands.
-Explore with list_dir/read_file before editing. Always think step-by-step before taking action. Verify changes by inspecting files or running commands.
+Only use tools when the task needs them; answer greetings and simple questions directly. When editing code, explore with list_dir/read_file first. Always think step-by-step before taking action. Verify changes by inspecting files or running commands.
 
 Project structure (2 levels deep):
 ${await buildTree()}`;
