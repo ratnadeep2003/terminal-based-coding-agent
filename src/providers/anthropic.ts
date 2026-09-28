@@ -1,13 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropicTools } from "../tools/schemas.js";
 import { withRetry } from "./retry.js";
-import type { LLMProvider, StepResult, ToolCall } from "./types.js";
+import type { LLMProvider, StepResult, ToolCall, UniversalMessage } from "./types.js";
 
 export class AnthropicProvider implements LLMProvider {
   readonly name = "anthropic" as const;
   readonly model: string;
   private client: Anthropic;
   private messages: Anthropic.MessageParam[] = [];
+  private universalHistory: UniversalMessage[] = [];
 
   constructor(apiKey: string, model: string = "claude-3-7-sonnet-20250219") {
     this.client = new Anthropic({ apiKey });
@@ -16,6 +17,7 @@ export class AnthropicProvider implements LLMProvider {
 
   addUserMessage(text: string): void {
     this.messages.push({ role: "user", content: text });
+    this.universalHistory.push({ role: "user", text });
   }
 
   async generateStep(systemInstruction: string): Promise<StepResult> {
@@ -33,7 +35,6 @@ export class AnthropicProvider implements LLMProvider {
       })
     );
 
-    // Save assistant message to messages history
     this.messages.push({ role: "assistant", content: response.content });
 
     let thinking = "";
@@ -54,6 +55,12 @@ export class AnthropicProvider implements LLMProvider {
       }
     }
 
+    this.universalHistory.push({
+      role: "assistant",
+      text: text.trim() || undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+    });
+
     return {
       thinking: thinking.trim() || undefined,
       text: text.trim() || undefined,
@@ -62,7 +69,6 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   addToolResults(results: Array<{ id?: string; name: string; output: string }>): void {
-    // Combine all tool results into a single user turn
     this.messages.push({
       role: "user",
       content: results.map((r) => ({
@@ -71,9 +77,49 @@ export class AnthropicProvider implements LLMProvider {
         content: r.output,
       })),
     });
+
+    this.universalHistory.push({
+      role: "user",
+      toolResults: results,
+    });
   }
 
   resetContext(): void {
     this.messages = [];
+    this.universalHistory = [];
+  }
+
+  getHistory(): UniversalMessage[] {
+    return this.universalHistory;
+  }
+
+  setHistory(history: UniversalMessage[]): void {
+    this.resetContext();
+    for (const item of history) {
+      if (item.role === "user") {
+        if (item.text) {
+          this.addUserMessage(item.text);
+        } else if (item.toolResults) {
+          this.addToolResults(item.toolResults);
+        }
+      } else if (item.role === "assistant") {
+        const content: Anthropic.ContentBlockParam[] = [];
+        if (item.text) {
+          content.push({ type: "text", text: item.text });
+        }
+        if (item.toolCalls) {
+          for (const call of item.toolCalls) {
+            content.push({
+              type: "tool_use",
+              id: call.id || `tool_${Math.random().toString(36).substring(2, 9)}`,
+              name: call.name,
+              input: call.args,
+            });
+          }
+        }
+        this.messages.push({ role: "assistant", content });
+        this.universalHistory.push(item);
+      }
+    }
   }
 }

@@ -6,12 +6,14 @@ export class GeminiProvider {
     model;
     ai;
     history = [];
-    constructor(apiKey, model = "gemini-3.6-flash") {
+    universalHistory = [];
+    constructor(apiKey, model = "gemini-2.5-flash") {
         this.ai = new GoogleGenAI({ apiKey });
         this.model = model;
     }
     addUserMessage(text) {
         this.history.push({ role: "user", parts: [{ text }] });
+        this.universalHistory.push({ role: "user", text });
     }
     async generateStep(systemInstruction) {
         const response = await withRetry(() => this.ai.models.generateContent({
@@ -27,7 +29,6 @@ export class GeminiProvider {
         if (!candidate || !candidate.content) {
             return { toolCalls: [], text: "No response received from Gemini." };
         }
-        // Save assistant message to history
         this.history.push(candidate.content);
         let thinking = "";
         let text = "";
@@ -47,6 +48,11 @@ export class GeminiProvider {
                 text += (text ? "\n" : "") + part.text.trim();
             }
         }
+        this.universalHistory.push({
+            role: "assistant",
+            text: text.trim() || undefined,
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        });
         return {
             thinking: thinking.trim() || undefined,
             text: text.trim() || undefined,
@@ -54,7 +60,6 @@ export class GeminiProvider {
         };
     }
     addToolResults(results) {
-        // Combine all tool results into a single user turn
         this.history.push({
             role: "user",
             parts: results.map((r) => ({
@@ -64,8 +69,47 @@ export class GeminiProvider {
                 },
             })),
         });
+        this.universalHistory.push({
+            role: "user",
+            toolResults: results,
+        });
     }
     resetContext() {
         this.history = [];
+        this.universalHistory = [];
+    }
+    getHistory() {
+        return this.universalHistory;
+    }
+    setHistory(history) {
+        this.resetContext();
+        for (const item of history) {
+            if (item.role === "user") {
+                if (item.text) {
+                    this.addUserMessage(item.text);
+                }
+                else if (item.toolResults) {
+                    this.addToolResults(item.toolResults);
+                }
+            }
+            else if (item.role === "assistant") {
+                const parts = [];
+                if (item.text) {
+                    parts.push({ text: item.text });
+                }
+                if (item.toolCalls) {
+                    for (const call of item.toolCalls) {
+                        parts.push({
+                            functionCall: {
+                                name: call.name,
+                                args: call.args,
+                            },
+                        });
+                    }
+                }
+                this.history.push({ role: "model", parts });
+                this.universalHistory.push(item);
+            }
+        }
     }
 }

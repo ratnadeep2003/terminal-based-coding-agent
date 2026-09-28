@@ -6,12 +6,14 @@ export class AnthropicProvider {
     model;
     client;
     messages = [];
+    universalHistory = [];
     constructor(apiKey, model = "claude-3-7-sonnet-20250219") {
         this.client = new Anthropic({ apiKey });
         this.model = model;
     }
     addUserMessage(text) {
         this.messages.push({ role: "user", content: text });
+        this.universalHistory.push({ role: "user", text });
     }
     async generateStep(systemInstruction) {
         const response = await withRetry(() => this.client.messages.create({
@@ -25,7 +27,6 @@ export class AnthropicProvider {
             tools: anthropicTools,
             messages: this.messages,
         }));
-        // Save assistant message to messages history
         this.messages.push({ role: "assistant", content: response.content });
         let thinking = "";
         let text = "";
@@ -45,6 +46,11 @@ export class AnthropicProvider {
                 text += (text ? "\n" : "") + block.text.trim();
             }
         }
+        this.universalHistory.push({
+            role: "assistant",
+            text: text.trim() || undefined,
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        });
         return {
             thinking: thinking.trim() || undefined,
             text: text.trim() || undefined,
@@ -52,7 +58,6 @@ export class AnthropicProvider {
         };
     }
     addToolResults(results) {
-        // Combine all tool results into a single user turn
         this.messages.push({
             role: "user",
             content: results.map((r) => ({
@@ -61,8 +66,47 @@ export class AnthropicProvider {
                 content: r.output,
             })),
         });
+        this.universalHistory.push({
+            role: "user",
+            toolResults: results,
+        });
     }
     resetContext() {
         this.messages = [];
+        this.universalHistory = [];
+    }
+    getHistory() {
+        return this.universalHistory;
+    }
+    setHistory(history) {
+        this.resetContext();
+        for (const item of history) {
+            if (item.role === "user") {
+                if (item.text) {
+                    this.addUserMessage(item.text);
+                }
+                else if (item.toolResults) {
+                    this.addToolResults(item.toolResults);
+                }
+            }
+            else if (item.role === "assistant") {
+                const content = [];
+                if (item.text) {
+                    content.push({ type: "text", text: item.text });
+                }
+                if (item.toolCalls) {
+                    for (const call of item.toolCalls) {
+                        content.push({
+                            type: "tool_use",
+                            id: call.id || `tool_${Math.random().toString(36).substring(2, 9)}`,
+                            name: call.name,
+                            input: call.args,
+                        });
+                    }
+                }
+                this.messages.push({ role: "assistant", content });
+                this.universalHistory.push(item);
+            }
+        }
     }
 }
