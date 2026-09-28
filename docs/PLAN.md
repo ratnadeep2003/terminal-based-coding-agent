@@ -1,11 +1,11 @@
-v1:
+v1: (done)
 For v1 this is going to be a mini version of claude code, written in js and ts and by using anthropic or gemini api key
 The user can directly use this agent in terminal and the agent can perform tasks such as reading writing and editing a file (for now in v1) and execute bash commands
 The agent should also show what it is thinking in the terminal and show what tool calls it is using to complete the task
 For now there is no need to give this coding agent access to a code file or folder will be given to it, it will make the changes and give the output
 
 v1.1:
-Ability to switch between ai models when tokens run out, token limit meter
+Ability to switch between ai models when tokens run out, token limit meter (done)
 v1.2:
 Custom commands like claude code: /comapct, /btw, /branch, /init, /resume, /name, /export, /cost, /usgae, /status\
 v1.3:
